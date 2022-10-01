@@ -8,8 +8,8 @@ import collections
 
 import utils
 
-class dataset(Dataset):
-    def __init__(self, root, df, mean=0., std=1.,
+class EchoDataset(Dataset):
+    def __init__(self, root, mean=0., std=1.,
                  length=16, period=2,
                  max_length=250,
                  clips=1,
@@ -18,34 +18,43 @@ class dataset(Dataset):
                  transforms=None,
                  external_test_location=None):
         self.root = root
-        self.data = pd.read_csv(os.path.join(self.root, 'MeasurementList.csv'), index_col=0)
+        self.data = pd.read_csv(os.path.join(self.root, 'MeasurementsList.csv'), index_col=0)
         self.data['HashedFileName'] = self.data['HashedFileName'].map(lambda x: x+'.avi')
         
+        # 3개의 distole 좌표값이 있는 경우에만 살림
+        self.calc_list = ['IVSd', 'LVIDd', 'LVPWd']#, 'IVSs', 'LVIDs', 'LVPWs']
+        self.data = self.data[self.data['Calc'].apply(lambda x: x in self.calc_list)].reset_index(drop=True)
+        perfect_list = [filename for filename in self.data['HashedFileName'].unique() if len(self.data[self.data['HashedFileName'] == filename])==3]
+        self.data = self.data[self.data['HashedFileName'].apply(lambda x: x in perfect_list)].reset_index(drop=True)
+
         self.video_list = os.listdir(os.path.join(self.root, "videos"))
         self.data = self.data[self.data['HashedFileName'].apply(lambda x: x in self.video_list)]
         self.fname = self.data['HashedFileName'].unique().tolist()
+
         self.transforms = transforms
 
     def __len__(self):
         return len(self.fname)
 
     def __getitem__(self, idx):
-        video = os.path.join(self.root, 'video', self.fname[idx])
+        video = os.path.join(self.root, 'videos', self.fname[idx])
         video = utils.loadvideo(video)
         
-        df = self.data[self.data['HasedFilename'] == self.fname[idx]]
+        df = self.data[self.data['HashedFileName'] == self.fname[idx]]
         df = df.sort_values(by=['Calc'])
+
 
         data = []
         label = []
-        for c in ['IVSd', 'LVIDd', 'LVPWd', 'IVSs', 'LVIDs', 'LVPWs']:
+        data.append(video[:,int(df.loc[0, 'Frame']), :, :])
+        for c in self.calc_list:
             try:
                 c_df = df[df['Calc'] == c]
                 # c_df[['X1', 'X2', 'Y1', 'Y2']].to_numpy().shape == (1,4)
-                data.append(video[:,int(c_df['Frames']), :, :])
+                # data.append(video[:,int(c_df['Frames']), :, :])
                 label.append(c_df[['X1', 'X2', 'Y1', 'Y2']].to_numpy())
             except:
-                data.append(np.zeros(video.shape[1:]))
+                # data.append(np.zeros(video.shape[1:]))
                 label.append([-1,-1,-1,-1])
 
         return data, label
