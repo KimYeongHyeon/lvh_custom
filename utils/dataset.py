@@ -1,3 +1,6 @@
+
+
+
 from operator import index
 import os
 import torch
@@ -41,8 +44,8 @@ class EchoDataset(Dataset):
         video = utils.loadvideo(video)
         
         df = self.data[self.data['HashedFileName'] == self.fname[idx]]
-        df = df.sort_values(by=['Calc'])
-
+        df = df.sort_values(by=['Calc']).reset_index(drop=True)
+        
 
         data = []
         label = []
@@ -57,7 +60,13 @@ class EchoDataset(Dataset):
                 # data.append(np.zeros(video.shape[1:]))
                 label.append([-1,-1,-1,-1])
 
-        return data, label
+        sample = {
+            "video":video,
+            "data":data,
+            "label":label,
+            'id': df['HashedFileName'][0]
+        }
+        return sample
 
 
 # class Echo(Dataset):
