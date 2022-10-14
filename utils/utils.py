@@ -1,6 +1,7 @@
 
-
+import numpy as np
 import torch
+import copy
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
     def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
@@ -49,3 +50,65 @@ class EarlyStopping:
             self.trace_func(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}))#.  Saving model ...')
         # torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
+
+def restore(sample: dict, pred, order='xyxy') -> list:
+    '''restore predicted value to original coordinates per batch
+
+    Inputs:
+        sample(dict)
+        preds(list)
+        order(str): 'xxyy' or 'xyxy'
+    Returns:
+        restored_coors(list)    
+    '''
+    assert order in ['xxyy', 'xyxy']
+    # if isinstance(pred, torch.Tensor):  pred = pred.detach().cpu().numpy()
+
+    ori_width = sample['width']
+    ori_height = sample['height']
+    batch_size, _, resized_height, resized_width = sample['data'].shape
+    ratio_w = ori_width / resized_width
+    ratio_h = ori_height / resized_height
+    ratio_w = ratio_w.reshape(-1, 1)
+    ratio_h = ratio_h.reshape(-1, 1)
+    new_pred = []
+    pred_ = pred.reshape(batch_size, -1, 4).clone()
+    
+    if order == 'xyxy':
+        pred_[:, :, 0] = pred_[:, :, 0] * ratio_w
+        pred_[:, :, 1] = pred_[:, :, 1] * ratio_h
+        pred_[:, :, 2] = pred_[:, :, 2] * ratio_w
+        pred_[:, :, 3] = pred_[:, :, 3] * ratio_h
+    elif order == 'xxyy':
+        pred_[:, :, 0] = pred_[:, :, 0] * ratio_w
+        pred_[:, :, 1] = pred_[:, :, 1] * ratio_w
+        pred_[:, :, 2] = pred_[:, :, 2] * ratio_h
+        pred_[:, :, 3] = pred_[:, :, 3] * ratio_h        
+    # for pred in pred_:
+    #     # arrange xyxy -> xxyy 
+    #     if order == 'xyxy':
+    #         pred = np.array(pred)[[0,2,1,3]]
+        
+    #     pred[:2] = pred[:2] * (ori_width/resized_width)
+    #     pred[2:] = pred[2:] * (ori_height/resized_height)
+    #     new_pred.extend(pred)
+
+    return pred_.to(torch.int)
+
+def distance_error(sample: dict, preds, order='xyxy'):
+    '''Caculate distance error bewteen the answers and predicted values per batch
+    
+    '''
+    assert order=='xyxy', NotImplemented
+
+    batch_size, _, _ = sample['label'].shape
+    error = sample['label'].detach().cpu().numpy() - preds.detach().cpu().numpy()
+    
+    # 좌표 2개씩 묶음
+    distance_error_per_coor_type_per_sample = np.mean(error.reshape(-1, 2)**2, axis=1)
+    # 같은 좌표끼리 묶음
+    distance_error_per_coor_type = np.mean(distance_error_per_coor_type_per_sample.reshape(batch_size, -1), axis=0)
+    
+    return distance_error_per_coor_type
+    
+

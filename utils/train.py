@@ -19,7 +19,8 @@ from sklearn.metrics import mean_squared_error
 
 from tqdm import tqdm
 
-from .evaluation import distance_error, AverageMeter
+from .evaluation import AverageMeter# ,distance_error, 
+from .utils import *
 
 
 def train_one_epoch(model, dataloader, optimizer, scheduler, device, criterion, CFG):
@@ -31,13 +32,14 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, criterion, 
     pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc='Train ')
     for step, sample in pbar:
         optimizer.zero_grad()
+        sample['data'] = sample['data'].to(device)
+        sample['label'] = sample['label'].to(device)
+        
         x = sample['data']
         y = sample['label']
-
-        x = x.to(device).float()
-        y = y.to(device).float()
-
-        preds = model(x).float()
+        
+        preds = model(x)
+        
         loss = criterion(preds, y)
 
         loss.backward()
@@ -45,8 +47,9 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, criterion, 
 
         losses.update(loss.item(), x.size(0))
         
-        mean_distance_error.update(distance_error(preds.reshape(-1, CFG['num_classes'], 3).detach().cpu().numpy(), 
-                                                  y.reshape(-1, CFG['num_classes'], 3).detach().cpu().numpy()), 
+        sample['label'] = restore(sample, sample['label'].detach().cpu(), order='xyxy')
+        preds = restore(sample, preds.detach().cpu(), order='xyxy')
+        mean_distance_error.update(np.mean(distance_error(sample, preds, order='xyxy')), 
                                    x.size(0))
 
         current_lr = optimizer.param_groups[0]['lr']
@@ -68,22 +71,24 @@ def valid_one_epoch(model, dataloader, device, criterion, CFG):
     pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc='Valid ')    
 
     for step, sample in pbar:
+        sample['data'] = sample['data'].to(device)
+        sample['label'] = sample['label'].to(device)
+        
         x = sample['data']
         y = sample['label']
 
-        x = x.to(device).float()
-        y = y.to(device).float()
-
-        preds = model(x).float()
+        preds = model(x)
         loss = criterion(preds, y)
 
         losses.update(loss.item(), x.size(0))
 
-        mean_distance_error.update(distance_error(preds.reshape(-1, CFG['num_classes'], 3).detach().cpu().numpy(),
-                                                  y.reshape(-1, CFG['num_classes'], 3).detach().cpu().numpy()), 
-                                    x.size(0))
+        sample['label'] = restore(sample, sample['label'].detach().cpu(), order='xyxy')
+        preds = restore(sample, preds.detach().cpu(), order='xyxy')
+        mean_distance_error.update(np.mean(distance_error(sample, preds, order='xyxy')), 
+                                   x.size(0))
 
         pbar.set_postfix(valid_loss=f'{losses.avg:.4f}',
-                         valid_MDE=f'{mean_distance_error.avg:.4f}')
+                         valid_MDE=f'{mean_distance_error.avg:.4f}'
+                        )
 
     return losses.avg, mean_distance_error.avg

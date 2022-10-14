@@ -2,4 +2,8 @@ dataset
 EchoNet-LVH_1
 EchoNet-LVH_2
 output
+염진영_제외 케이스 모음
+saved_model
+wandb
 0X1ED05E23735FBF84.avi
+*.zip

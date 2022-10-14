@@ -1,71 +1,84 @@
 
 
-
-from operator import index
 import os
-import torch
-from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
 import collections
+import cv2
+from operator import index
+
+import torch
+from torch.utils.data import Dataset
+
 
 import utils
 
 class EchoDataset(Dataset):
     def __init__(self, root, mean=0., std=1.,
-                 length=16, period=2,
-                 max_length=250,
-                 clips=1,
-                 pad=None,
-                 noise=None,
                  transforms=None,
+                 split='train',
                  external_test_location=None):
-        self.root = root
-        self.data = pd.read_csv(os.path.join(self.root, 'MeasurementsList.csv'), index_col=0)
-        self.data['HashedFileName'] = self.data['HashedFileName'].map(lambda x: x+'.avi')
+        ''' 
+        Inputs: 
+            root(str): path to root including patient directories and labels (csv)
         
-        # 3개의 distole 좌표값이 있는 경우에만 살림
-        self.calc_list = ['IVSd', 'LVIDd', 'LVPWd']#, 'IVSs', 'LVIDs', 'LVPWs']
-        self.data = self.data[self.data['Calc'].apply(lambda x: x in self.calc_list)].reset_index(drop=True)
-        perfect_list = [filename for filename in self.data['HashedFileName'].unique() if len(self.data[self.data['HashedFileName'] == filename])==3]
-        self.data = self.data[self.data['HashedFileName'].apply(lambda x: x in perfect_list)].reset_index(drop=True)
-
-        self.video_list = os.listdir(os.path.join(self.root, "videos"))
-        self.data = self.data[self.data['HashedFileName'].apply(lambda x: x in self.video_list)]
-        self.fname = self.data['HashedFileName'].unique().tolist()
+        '''
+        assert split in ['train', 'val', 'test']
+        self.root = root
+        self.data = pd.read_csv(os.path.join(self.root, 'labels.csv'), index_col=0)
+        self.data = self.data[self.data['split']==split]
+        # 환자 폴더 받아오기
+        patient_list = [dirname for dirname in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, dirname))]
+        # 환자 폴더가 존재하는 라벨 정보만 받아오기
+        
+        self.data = self.data[self.data['FileName'].apply(lambda x: x in patient_list)]
+        self.fname = self.data['FileName'].unique().tolist()
 
         self.transforms = transforms
+
+        self.calc_list = ['IVSd', 'LVPWd', 'LVIDd']
+        # self.calc_list = self.data['Calc'].unique()
 
     def __len__(self):
         return len(self.fname)
 
     def __getitem__(self, idx):
-        video = os.path.join(self.root, 'videos', self.fname[idx])
-        video = utils.loadvideo(video)
-        
-        df = self.data[self.data['HashedFileName'] == self.fname[idx]]
+        df = self.data[self.data['FileName'] == self.fname[idx]]
         df = df.sort_values(by=['Calc']).reset_index(drop=True)
-        
 
-        data = []
+        image = os.path.join(self.root, str(self.fname[idx]),
+                             str(df.loc[0, 'Frame']).zfill(4)+'.png')
+        image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+        
+        ori_height, ori_width = image.shape
         label = []
-        data.append(video[:,int(df.loc[0, 'Frame']), :, :])
         for c in self.calc_list:
             try:
                 c_df = df[df['Calc'] == c]
-                # c_df[['X1', 'X2', 'Y1', 'Y2']].to_numpy().shape == (1,4)
-                # data.append(video[:,int(c_df['Frames']), :, :])
-                label.append(c_df[['X1', 'X2', 'Y1', 'Y2']].to_numpy())
-            except:
-                # data.append(np.zeros(video.shape[1:]))
+                coor = c_df[['X1', 'X2', 'Y1', 'Y2']].to_numpy().squeeze().astype(float)
+                label.append((coor[0], coor[2]))
+                label.append((coor[1], coor[3]))
+
+            except Exception as e:
+                print(e)
                 label.append([-1,-1,-1,-1])
 
+        if self.transforms:
+            transformed = self.transforms(image=image, keypoints=label)
+            image, label = transformed['image'], transformed['keypoints']
+        image = np.array([image]*3)
+        height, width = image.shape[1:]
+        data = torch.tensor(image)
+
         sample = {
-            "video":video,
-            "data":data,
-            "label":label,
-            'id': df['HashedFileName'][0]
+            # "ima":video,
+            'data':data.to(torch.float32),
+            'label':torch.tensor(label).reshape(-1).to(torch.float32), # flatten 상태의 포인트를 예측하기 위해 reshape -1 를 수행
+            'id': df['FileName'][0],
+            'height':ori_height,
+            'width':ori_width
         }
+
         return sample
 
 

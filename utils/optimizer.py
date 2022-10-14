@@ -1,10 +1,10 @@
 from torch.optim import lr_scheduler
 
 def fetch_scheduler(CFG, optimizer):
-    if CFG['optimizer']['scheduler'] == 'CosineAnnealingLR':
+    if CFG['scheduler'] == 'CosineAnnealingLR':
         scheduler = lr_scheduler.CosineAnnealingLR(optimizer,T_max=CFG.T_max, 
                                                    eta_min=CFG.min_lr)
-    elif CFG['optimizer']['scheduler'] == 'CosineAnnealingWarmUpRestarts':
+    elif CFG['scheduler'] == 'CosineAnnealingWarmUpRestarts':
 #         scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer,T_0=CFG.T_0, 
 #                                                              eta_min=CFG.min_lr)
         scheduler = CosineAnnealingWarmUpRestarts(optimizer, 
@@ -14,19 +14,19 @@ def fetch_scheduler(CFG, optimizer):
                                                   T_up=20, 
                                                   gamma=0.5)
     
-    elif CFG['optimizer']['scheduler'] == 'ReduceLROnPlateau':
+    elif CFG['scheduler'] == 'ReduceLROnPlateau':
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer,
                                                    mode='min',
                                                    factor=CFG.reducelr_factor,
                                                    patience=CFG.patience,
                                                    threshold=0.0001,
                                                    min_lr=CFG.min_lr,)
-    elif CFG['optimizer']['scheduler'] == 'ExponentialLR':
+    elif CFG['scheduler'] == 'ExponentialLR':
         scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=0.85)
-    elif CFG['optimizer']['scheduler'] == 'LambdaLR':
+    elif CFG['scheduler'] == 'LambdaLR':
         scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.99**epoch,
                                           last_epoch=-1, verbose=True)
-    elif CFG['optimizer']['scheduler'] == None or 'None':
+    elif CFG['scheduler'] == None or 'None':
         return None
         
     return scheduler
