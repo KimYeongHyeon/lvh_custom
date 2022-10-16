@@ -2,6 +2,7 @@
 import numpy as np
 import torch
 import copy
+import matplotlib.pyplot as plt
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
     def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
@@ -112,3 +113,18 @@ def distance_error(sample: dict, preds, order='xyxy'):
     return distance_error_per_coor_type
     
 
+def show_lvh(sample, pred = None):
+    image = sample['data'].squeeze().permute(1,2,0).clone()
+    
+    coors = sample['label'] if pred == None else pred
+    plt.figure(figsize=(15,10))
+    plt.imshow(image, cmap='gray')
+    for coor in coors.reshape(-1, 4):
+        coor = coor.squeeze()
+        plt.plot((coor[0], coor[2]),
+                (coor[1], coor[3]), linewidth=3)
+        plt.scatter((coor[0], coor[2]), (coor[1], coor[3]), )
+    plt.title(f"id: {sample['id']} \
+                shape: {sample['data'].shape}")
+    plt.axis('off')
+    plt.show()

@@ -44,7 +44,7 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, criterion, 
 
         loss.backward()
         optimizer.step()
-
+        
         losses.update(loss.item(), x.size(0))
         
         sample['label'] = restore(sample, sample['label'].detach().cpu(), order='xyxy')
