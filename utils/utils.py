@@ -111,8 +111,20 @@ def distance_error(sample: dict, preds, order='xyxy'):
     distance_error_per_coor_type = np.mean(distance_error_per_coor_type_per_sample.reshape(batch_size, -1), axis=0)
     
     return distance_error_per_coor_type
-    
 
+def heatmap2argmax(heatmap, scale=False):
+    def _scale(p, s): return 2 * (p / s) - 1
+
+    N, C, H, W = heatmap.shape
+    index = heatmap.view(N,C,1,-1).argmax(dim=-1).to('cpu')
+    pts = torch.cat([index%W, index//W], dim=2)
+    pts.to(heatmap.device)
+    if scale:
+        scale = torch.tensor([W,H], device=heatmap.device)
+        pts = _scale(pts, scale)
+
+    return pts
+    
 def show_lvh(sample, pred = None):
     image = sample['data'].squeeze().permute(1,2,0).clone()
     

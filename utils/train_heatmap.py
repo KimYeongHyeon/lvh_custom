@@ -1,19 +1,4 @@
-import os
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import torchvision
-from torchvision import transforms, utils
-from torchvision.transforms import Lambda, Compose
-import torchvision.models as models
-from torch.cuda import amp
 
 from sklearn.metrics import mean_squared_error
 
@@ -38,26 +23,29 @@ def train_one_epoch(model, dataloader, optimizer, scheduler, device, criterion, 
         x = sample['data']
         y = sample['label']
         heatmap = render_gaussian_dot_f(
-            y.flip(dims=[0,1]), # xy 2 yx
+            y.flip(dims=[2]), # xy 2 yx
             torch.tensor([CFG['std'], CFG['std']], dtype=torch.float32).to(CFG['device']),
             [CFG['height'], CFG['width']],
             # mul=255.
         ).to(torch.float)
-        
+        background = 1 - heatmap.sum(dim=1).unsqueeze(1).clip(0,1)
+        heatmap = torch.concat((heatmap,background), 1)
+
         preds = model(x)
         
-        loss = criterion(preds, heatmap)
+        loss = criterion(preds*255., heatmap*255.)  
         
         loss.backward()
         optimizer.step()
         
         losses.update(loss.item(), x.size(0))
         
-         # preds = restore(sample, preds.detach().cpu(), order='xyxy')
-        # mean_distance_error.update(np.mean(distance_error(sample, preds, order='xyxy')), 
-        #                            x.size(0))
-        mean_distance_error.update(0, x.size(0))
-
+        metric = distance_error(sample, heatmap2argmax(preds[:,:-1,...]))
+        mean_distance_error.update(np.mean(
+                                            metric
+                                            ), 
+                                   x.size(0)
+                                   )
         current_lr = optimizer.param_groups[0]['lr']
         pbar.set_postfix(train_loss=f'{losses.avg:.4f}',
                          train_MDE=f'{mean_distance_error.avg:.4f}',
@@ -84,22 +72,25 @@ def valid_one_epoch(model, dataloader, device, criterion, CFG):
         y = sample['label']
         
         heatmap = render_gaussian_dot_f(
-            y.flip(dims=[0,1]), # xy 2 yx
+            y.flip(dims=[2]), # xy 2 yx
             torch.tensor([CFG['std'], CFG['std']], dtype=torch.float32).to(CFG['device']),
             [CFG['height'], CFG['width']],
             # mul=255.
         ).to(torch.float)
-
+        background = 1 - heatmap.sum(dim=1).unsqueeze(1).clip(0,1)
+        heatmap = torch.concat((heatmap,background), 1)
         preds = model(x)
         
-        loss = criterion(preds, heatmap)
+        loss = criterion(preds*255., heatmap*255.)
         
         losses.update(loss.item(), x.size(0))
+        metric = distance_error(sample, heatmap2argmax(preds[:,:-1,...]))
+        mean_distance_error.update(np.mean(
+                                            metric
+                                            ), 
+                                   x.size(0)
+                                   )
         
-        # preds = restore(sample, preds.detach().cpu(), order='xyxy')
-        # mean_distance_error.update(np.mean(distance_error(sample, preds, order='xyxy')), 
-        #                            x.size(0))
-        mean_distance_error.update(0, x.size(0))
 
         pbar.set_postfix(valid_loss=f'{losses.avg:.4f}',
                          valid_MDE=f'{mean_distance_error.avg:.4f}'
