@@ -110,7 +110,7 @@ def distance_error(sample: dict, preds, order='xyxy'):
     # 같은 좌표끼리 묶음
     distance_error_per_coor_type = np.mean(distance_error_per_coor_type_per_sample.reshape(batch_size, -1), axis=0)
     
-    return distance_error_per_coor_type
+    return np.sqrt(distance_error_per_coor_type)
 
 def heatmap2argmax(heatmap, scale=False):
     def _scale(p, s): return 2 * (p / s) - 1
